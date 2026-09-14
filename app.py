@@ -8,7 +8,7 @@ from google import genai
 
 # 1. Page Configuration & Professional Styling
 st.set_page_config(
-    page_title="SDP Decision Quality Framework",
+    page_title="Decision Coach Framework",
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -108,7 +108,7 @@ if 'ai_chat_history' not in st.session_state:
     st.session_state.ai_chat_history = [
         {
             "role": "assistant",
-            "content": "Welcome - I am your SDP decision coach. Tell me about the core problem or project scenario you wish to investigate so we can map your financial and non-financial metrics transparently."
+            "content": "Welcome - I am your decision coach. Tell me about the core problem or project scenario you wish to investigate so we can map your financial and non-financial metrics transparently."
         }
     ]
 
@@ -219,7 +219,7 @@ def trigger_elite_gemini_call(prompt_text):
         if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
             if msg['content'] == prompt_text and msg['role'] == 'user': continue
             conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
-    system_instruction = """You are an elite decision coach certified by the Society for Decision Professionals (SDP).
+    system_instruction = """You are an elite decision coach.
 Your strict objective is helping the user systematically complete framing boundaries across any arbitrary domain.
 Keep responses highly concise (under 2 paragraphs).
 Acknowledge discovered facts, link them directly to clear qualitative and quantitative parameters, and end your response by asking exactly one targeted question to pin down parameters still unrefined."""
@@ -232,7 +232,7 @@ Acknowledge discovered facts, link them directly to clear qualitative and quanti
         st.session_state['api_error_hold'] = f"Model Communication Error: {str(e)}"
         return None
 
-# --- DYNAMIC SDP MATURITY LOGIC CALCULATOR ---
+# --- DYNAMIC QUALITY MATURITY LOGIC CALCULATOR ---
 def compute_framework_maturity():
     score_breakdown = {
         'Appropriate Frame': 40 if st.session_state.framing_data.get('problem_statement') else 10,
@@ -256,9 +256,9 @@ current_maturity = compute_framework_maturity()
 
 # 3. SIDEBAR NAVIGATION & PERSISTENCE BACKUP CONTROLS
 with st.sidebar:
-    st.title("🏛️ SDP DQ Engine")
+    st.title("🏛️ Decision Coach Engine")
     st.markdown("---")
-    app_mode = st.radio("Workflow Steps", ["1. 🤖 AI Framing & Discovery Coach","2. 🎯 Document Frame Boundaries","3. 🎨 Define Strategy Alternatives","4. 📊 Model Information Ranges & Benchmarks","5. ⚖️ Calibrate Values & Rate Analysis","6. 📊 Executive DQ Dashboard"])
+    app_mode = st.radio("Workflow Steps", ["1. 🤖 AI Framing & Discovery Coach","2. 🎯 Document Frame Boundaries","3. 🎨 Define Strategy Alternatives","4. 📊 Model Information Ranges & Benchmarks","5. ⚖️ Calibrate Values & Rate Analysis","6. 📊 Executive Dashboard"])
     st.markdown("---")
     st.subheader("Decision Context")
     st.session_state.decision_metadata['name'] = st.text_input("Decision Title", value=st.session_state.decision_metadata['name'])
@@ -293,7 +293,7 @@ with st.sidebar:
         st.rerun()
     output_state = {key: st.session_state[key] for key in st.session_state.keys() if key != 'api_error_hold'}
     chat_dump = json.dumps(output_state, indent=2)
-    st.download_button(label="📥 Download Workspace Save (.json)",data=chat_dump,file_name="sdp_dq_framework_backup.json",mime="application/json",use_container_width=True)
+    st.download_button(label="📥 Download Workspace Save (.json)",data=chat_dump,file_name="decision_framework_backup.json",mime="application/json",use_container_width=True)
     uploaded_backup = st.file_uploader("📂 Reload Saved File", type=["json"])
     if uploaded_backup is not None:
         try:
@@ -308,7 +308,7 @@ with st.sidebar:
 # SECTION 1: COACH INTERFACE
 if app_mode == "1. 🤖 AI Framing & Discovery Coach":
     st.title("🤖 Step 1: AI Framing & Discovery Coach")
-    st.markdown("Converse with the elite coach to adjust fields, add contextual elements, or expand metrics based on your strategic constraints.")
+    st.markdown("Converse with the decision coach to adjust fields, add contextual elements, or expand metrics based on your strategic constraints.")
     if not api_key:
         st.warning("⚠️ GEMINI_API_KEY missing. Operating in fallback descriptive mock state.")
     for msg in st.session_state.ai_chat_history:
@@ -416,7 +416,7 @@ elif app_mode == "5. ⚖️ Calibrate Values & Rate Analysis":
             st.session_state.reasoning_data[k_human] = st.slider(f"{labels['non_financial_label']}: {name_disp}", 1, 10, int(st.session_state.reasoning_data.get(k_human, 5)), key=f"w{k_human}")
 
 # SECTION 6: EXECUTIVE DASHBOARD
-elif app_mode == "6. 📊 Executive DQ Dashboard":
+elif app_mode == "6. 📊 Executive Dashboard":
     st.title("📊 Executive Decision Quality Dashboard")
     metric_label = st.session_state.info_data.get('metric_name', "Primary Value Impact")
     formulas = st.session_state.decision_formulas
@@ -475,11 +475,11 @@ elif app_mode == "6. 📊 Executive DQ Dashboard":
         fig_scatter.add_shape(type="line", x0=0, y0=0, x1=11, y1=11, line=dict(color="Gray", dash="dash"))
         st.plotly_chart(fig_scatter, use_container_width=True)
         
-    # --- FIXED & REINSTATED RADAR SPIDER PLOT ---
+    # --- RADAR SPIDER PLOT ---
     st.markdown("---")
     col_radar, col_rec = st.columns(2)
     with col_radar:
-        st.markdown("### 🕸️ SDP 6 Dimensions of Decision Quality")
+        st.markdown("### 🕸️ 6 Dimensions of Decision Quality")
         categories = list(st.session_state.dq_scores.keys())
         values = list(st.session_state.dq_scores.values())
         
@@ -503,10 +503,10 @@ elif app_mode == "6. 📊 Executive DQ Dashboard":
         st.plotly_chart(fig_radar, use_container_width=True)
         
     with col_rec:
-        st.markdown("### 🏛️ SDP Framework Recommendation Summary")
+        st.markdown("### 🏛️ Framework Recommendation Summary")
         if best_strategy and best_score >= 0:
             st.success(f"Optimal Strategy Path Assignment: Based on active performance scores and weight assignments, **{best_strategy}** yields the maximum evaluated outcome with a comprehensive rating of {best_score}/10.")
-        st.markdown("""⚠️ Standard SDP Professional Disclaimer
+        st.markdown("""⚠️ Standard Professional Disclaimer
 This decision tool operates deterministically based entirely on specific structural variables, user preference sliders, and substitution templates.
 The generated metrics summarize value trade-offs and do not constitute legal or statutory public sector pension advisory.""")
 
