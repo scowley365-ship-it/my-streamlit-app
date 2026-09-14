@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import json
+import copy
 import streamlit_authenticator as stauth
 from google import genai
 
