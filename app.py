@@ -158,9 +158,7 @@ elif authentication_status:
         chat_log = ""
         for msg in st.session_state.ai_chat_history:
             if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
-                chat_log += f"{msg['role'].upper()}: {str(msg['content'])}
-
-"
+                chat_log += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
             
         extraction_prompt = """
         Analyze the decision framework interview history below. Extract values to populate this dynamic schema structure.
@@ -240,9 +238,7 @@ elif authentication_status:
         for msg in st.session_state.ai_chat_history[-8:]:
             if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
                 if msg['content'] == prompt_text and msg['role'] == 'user': continue
-                conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}
-
-"
+                conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
         system_instruction = """You are an elite decision coach.
     Your strict objective is helping the user systematically complete framing boundaries across any arbitrary domain.
     Keep responses highly concise (under 2 paragraphs).
