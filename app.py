@@ -10,8 +10,8 @@ import copy
 
 # 1. Authentication System Integration
 # Deeply convert read-only Streamlit secrets to mutable dict structures to allow streamlit-authenticator to track login metrics
-credentials_dict = copy.deepcopy(dict(st.secrets['credentials'])) if 'credentials' in st.secrets else {}
-cookie_dict = copy.deepcopy(dict(st.secrets['cookie'])) if 'cookie' in st.secrets else {}
+credentials_dict = st.secrets['credentials'].to_dict() if 'credentials' in st.secrets else {}
+cookie_dict = st.secrets['cookie'].to_dict() if 'cookie' in st.secrets else {}
 
 authenticator = stauth.Authenticate(
     credentials_dict,
