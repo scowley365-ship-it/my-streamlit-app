@@ -1,0 +1,197 @@
+pythonimport streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import os
+import json
+from google import genai
+from google.genai import types
+
+# =====================================================================
+# 1. PAGE CONFIGURATION & ARCHITECTURE SETUP
+# =====================================================================
+st.set_page_config(
+    page_title="Dynamic Decision Quality Framework",
+    page_icon="🏛️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.html("""
+    <style>
+    .main .block-container { padding-top: 1rem !important; padding-bottom: 2rem !important; }
+    h1 { color: #1E3A8A !important; font-weight: 700 !important; margin-bottom: 0.5rem !important; }
+    h2 { color: #2563EB !important; font-weight: 600 !important; margin-top: 1.5rem !important; }
+    .stButton button { font-weight: 600 !important; }
+    .sticky-container {
+        border-bottom: 2px solid #E2E8F0 !important;
+        padding-bottom: 1rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+    .advisory-notice {
+        background-color: #FEF3C7;
+        color: #92400E;
+        padding: 0.75rem 1rem;
+        border-radius: 0.375rem;
+        border-left: 4px solid #D97706;
+        margin-bottom: 1rem;
+        font-size: 0.95rem;
+    }
+    </style>
+""")
+
+api_key = os.environ.get("GEMINI_API_KEY")
+
+# =====================================================================
+# 2. STATE MANAGEMENT LAYER (FULLY META-DATA DRIVEN)
+# =====================================================================
+def initialize_states(force=False):
+    if 'initialized' not in st.session_state or force:
+        st.session_state.initialized = True
+        st.session_state.decision_domain = "Personal Finance & Cash Flow Optimization"
+        
+        st.session_state.form_schema = [
+            {"label": "Current Monthly Surplus (€)", "key": "monthly_surplus", "type": "number", "min": 0.0, "max": 10000.0, "default": 500.0, "step": 50.0},
+            {"label": "Estimated Day-5 Expense Savings (€/month)", "key": "day5_savings", "type": "slider", "min": 0.0, "max": 2000.0, "default": 0.0, "step": 10.0}
+        ]
+        
+        st.session_state.human_schema = [
+            {"label": "Lifestyle Friction & Flexibility", "key": "h1", "desc": "Assessing impact on personal convenience, work-life balance, and adaptability to sudden schedule alterations."},
+            {"label": "Long-term Skill & Value Generation", "key": "h2", "desc": "Evaluating if the pathway creates compounding professional or financial expertise over time."}
+        ]
+        
+        st.session_state.guided_inputs = {
+            "monthly_surplus": 500.0, "day5_savings": 0.0
+        }
+        
+        st.session_state.decision_metadata = {'name': "Personal Financial Optimization Strategy", 'owner': "", 'description': ""}
+        st.session_state.info_data = {
+            'metric_name': "Net Monthly Cash Flow Impact (€)",
+            'knowledge_gaps': "Aggregates base net baseline surplus balances and incorporates positive monthly cost-saving modifications."
+        }
+        
+        st.session_state.dq_scores = {
+            'Appropriate Frame': 85, 'Creative Alternatives': 80, 'Reliable Information': 70,
+            'Clear Values & Trade-offs': 75, 'Logically Sound Reasoning': 75, 'Commitment to Action': 65
+        }
+        
+        st.session_state.framing_data = {
+            'problem_statement': "Optimize discretionary expenditures and secondary commitments to boost monthly savings margins without causing lifestyle fatigue.",
+            'in_scope': "Domestic outlays, minor subscription adjustments, and working style arrangements.",
+            'out_scope': "Relocating residential addresses or liquidating long-term retirement portfolios.",
+            'constraints': "Fixed multi-year lease agreements and non-negotiable living baselines."
+        }
+        
+        st.session_state.alternatives_data = {
+            'alt1_name': "Status Quo Baseline Strategy", 'alt1_desc': "Maintain typical spending trajectories and default scheduling limits.",
+            'alt2_name': "Aggressive Optimization Architecture", 'alt2_desc': "Introduce tight structural reductions on ancillary variable outlays.",
+            'alt3_name': "Hybrid Balanced Adaptation", 'alt3_desc': "Introduce targeted remote/part-time reductions to optimize commuting expenses seamlessly."
+        }
+        
+        st.session_state.values_data = {'cost_weight': 50, 'human_weight': 50}
+        
+        st.session_state.reasoning_data = {
+            'alt1_cost_perf': 5, 'alt1_speed_perf': 5, 'alt1_risk_perf': 5,
+            'alt2_cost_perf': 8, 'alt2_speed_perf': 7, 'alt2_risk_perf': 4,
+            'alt3_cost_perf': 7, 'alt3_speed_perf': 8, 'alt3_risk_perf': 7,
+            'alt1_h1': 8, 'alt1_h2': 5,
+            'alt2_h1': 3, 'alt2_h2': 6,
+            'alt3_h1': 7, 'alt3_h2': 8
+        }
+        
+        st.session_state.ai_chat_history = [
+            {"role": "assistant", "content": "Welcome - I am your decision coach, please provide as much detail as possible outlining the decision context to begin."}
+        ]
+        st.session_state.dq_chat_history = [
+            {"role": "assistant", "content": "Hello! I am your Decision Quality Auditor. Let's look closely at your workflow architecture balances."}
+        ]
+
+initialize_states()
+
+def handle_uploaded_backup():
+    if st.session_state.uploaded_file_key is not None:
+        try:
+            loaded_data = json.load(st.session_state.uploaded_file_key)
+            if isinstance(loaded_data, dict):
+                for k, v in loaded_data.items():
+                    st.session_state[k] = v
+                st.session_state["backup_load_success"] = True
+            else:
+                st.session_state["backup_load_error"] = "Invalid payload configuration structural format."
+        except Exception as e:
+            st.session_state["backup_load_error"] = f"Failed to parse target JSON file save: {str(e)}"
+
+# =====================================================================
+# 3. AI INTERACTION CORE (UPGRADED TO GEMINI-3.6-FLASH)
+# =====================================================================
+def trigger_elite_gemini_call(prompt_text):
+    conversation_context = ""
+    for msg in st.session_state.ai_chat_history[-6:]:
+        if msg['content'] != prompt_text:
+            conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
+            
+    system_instruction = (
+        "You are an expert dynamic context localized decision coach certified by the Society for Decision Professionals (SDP). "
+        "Provide tailored responses, metrics framework guidelines, and structural options accordingly."
+    )
+    
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=f"{system_instruction}\n\nLOG:\n{conversation_context}\n\nUSER:\n{prompt_text}"
+        )
+        return response.text
+    except Exception as e:
+        return f"Communication Error: {str(e)}"
+
+def run_meta_extraction():
+    if not api_key or len(st.session_state.ai_chat_history) < 2:
+        return
+        
+    chat_log = "".join([f"{m['role'].upper()}: {m['content']}\n\n" for m in st.session_state.ai_chat_history])
+    
+    prompt = (
+        "Analyze the context logs and extract the appropriate framework structure and matching estimates.\n\n"
+        "Return ONLY a clean JSON object matching this structure EXACTLY. No markdown wrappers or formatting blocks:\n"
+        "{\n"
+        "  \"domain\": \"string\",\n"
+        "  \"problem_statement\": \"string\",\n"
+        "  \"in_scope\": \"string\",\n"
+        "  \"out_scope\": \"string\",\n"
+        "  \"constraints\": \"string\",\n"
+        "  \"alt1_name\": \"string\", \"alt1_desc\": \"string\",\n"
+        "  \"alt2_name\": \"string\", \"alt2_desc\": \"string\",\n"
+        "  \"alt3_name\": \"string\", \"alt3_desc\": \"string\",\n"
+        "  \"metric_name\": \"Name of core metric\",\n"
+        "  \"form_schema\": [\n"
+        "     {\"label\": \"String\", \"key\": \"key_name\", \"type\": \"number\"|\"slider\", \"min\":0, \"max\":100, \"default\":50.0, \"step\":1.0}\n"
+        "  ],\n"
+        "  \"human_schema\": [\n"
+        "     {\"label\": \"Name of Qualitative Factor 1\", \"key\": \"h1\", \"desc\": \"Context criteria summary\"}\n"
+        "  ],\n"
+        "  \"range_formula_explanation\": \"Short summary description\",\n"
+        "  \"initial_reasoning_scores\": {\n"
+        "     \"alt1_cost_perf\": 5, \"alt1_speed_perf\": 5, \"alt1_risk_perf\": 5,\n"
+        "     \"alt2_cost_perf\": 5, \"alt2_speed_perf\": 5, \"alt2_risk_perf\": 5,\n"
+        "     \"alt3_cost_perf\": 5, \"alt3_speed_perf\": 5, \"alt3_risk_perf\": 5,\n"
+        "     \"alt1_h1\": 5, \"alt1_h2\": 5, \"alt1_h3\": 5,\n"
+        "     \"alt2_h1\": 5, \"alt2_h2\": 5, \"alt2_h3\": 5,\n"
+        "     \"alt3_h1\": 5, \"alt3_h2\": 5, \"alt3_h3\": 5\n"
+        "  },\n"
+        "  \"initial_dq_maturity_scores\": {\n"
+        "     \"Appropriate Frame\": 60, \"Creative Alternatives\": 60, \"Reliable Information\": 60,\n"
+        "     \"Clear Values & Trade-offs\": 60, \"Logically Sound Reasoning\": 60, \"Commitment to Action\": 60\n"
+        "  }\n"
+        "}\n\n"
+        f"CONVERSATION LOG:\n{chat_log}"
+    )
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(model='gemini-3.6-flash', contents=prompt)
+        cleaned_text = response.text.strip().removeprefix("json").removesuffix("").strip()
+        data = json.loads(cleaned_text)
+        st.session_state.decision_domain = data.get("domain", "Unknown Focus")
+        st.session_state.framing_data['problem_statement'] = data.get("problem_statement", "")
+        st.session_state.framing_data['in_scope'] = data.get("in_scope", "")
+Use code with caution.st.session_state.framing_data['out_scope'] = data.get("out_scope", "")st.session_state.framing_data['constraints'] = data.get("constraints", "")for i in range(1, 4):st.session_state.alternatives_data[f'alt{i}_name'] = data.get(f'alt{i}_name', f"Pathway Alternative {i}")st.session_state.alternatives_data[f'alt{i}_desc'] = data.get(f'alt{i}_desc', "")st.session_state.info_data['metric_name'] = data.get("metric_name", "Primary Variable Outcome")st.session_state.form_schema = data.get("form_schema", [])st.session_state.human_schema = data.get("human_schema", [])st.session_state.info_data['knowledge_gaps'] = data.get("range_formula_explanation", "")new_inputs = {}for item in st.session_state.form_schema:new_inputs[item["key"]] = float(item.get("default", 50.0))st.session_state.guided_inputs = new_inputsif "initial_reasoning_scores" in data:st.session_state.reasoning_data.update(data["initial_reasoning_scores"])if "initial_dq_maturity_scores" in data:st.session_state.dq_scores.update(data["initial_dq_maturity_scores"])except Exception:pass=====================================================================4. INDUSTRY-AGNOSTIC STATISTICAL COMPUTATION ENGINE (DYNAMIC SIGN CORRECTION)=====================================================================def calculate_statistical_ranges(inputs, schema, domain, metric):"""Computes custom variance values across changing financial scenarios.Checks field context labels to determine arithmetic tracking vectors."""net_p50 = 0.0active_fields_counted = 0# Text-based semantic arrays to enforce mathematical parameter alignmentspos_terms = ["saving", "revenue", "surplus", "offset", "benefit", "income", "profit", "gain", "return"]neg_terms = ["premium", "tax", "cost", "capex", "degradation", "penalty", "expense", "fee", "charge", "loss"]for item in schema:key = item["key"]val = float(inputs.get(key, item.get("default", 50.0)))label_lower = item["label"].lower()# Detect tracking signs using target text contextsis_positive = any(t in label_lower for t in pos_terms)is_negative = any(t in label_lower for t in neg_terms)# Apply conditional multipliers to adjust net impacts accuratelyif is_positive and not is_negative:net_p50 += valactive_fields_counted += 1elif is_negative and not is_positive:net_p50 -= valactive_fields_counted += 1else:# Neutral parameter heuristic defaults to additionnet_p50 += valactive_fields_counted += 1if active_fields_counted == 0:vals = [float(v) for v in inputs.values() if isinstance(v, (int, float))]net_p50 = sum(vals) if vals else 100.0p50 = net_p50# Variance distributions adjust layout signs to protect tracking rangesif p50 >= 0:p90 = p50 * 1.15p10 = p50 * 0.85else:# Flip scales for negative cost structuresp90 = p50 * 1.15  # More severe cost trackingp10 = p50 * 0.85  # Lower net cash outflow footprintreturn round(p90, 2), round(p50, 2), round(p10, 2)=====================================================================5. SIDEBAR NAVIGATION CONTROLS=====================================================================with st.sidebar:st.title("Universal DQ Engine")st.caption(f"Active Assessment Space: {st.session_state.decision_domain}")st.markdown("---")app_mode = st.radio("Framework Workflow", ["1. 🤖 AI Intake Coach","2. 🎯 Boundary Mapping","3. 🎨 Strategic Paths","4. 📊 Financial Evaluation Sandbox","5. 🌿 Qualitative Human Scorecard","📊 Executive DQ Dashboard"])st.markdown("---")if st.button("🔄 Force Extraction & Parse Controls", type="primary", use_container_width=True):with st.spinner("Re-aligning configuration profiles..."):run_meta_extraction()st.rerun()if st.button("❌ Reset Workspace & Clear Cache", type="secondary", use_container_width=True):initialize_states(force=True)st.success("Session state refreshed successfully!")st.rerun()st.markdown("### 📂 Save & Load States")export_payload = {k: st.session_state[k] for k in st.session_state.keys() if not k.startswith("uploaded_file")}st.download_button(label="📥 Download State Save File (.json)",data=json.dumps(export_payload, indent=2),file_name="dq_framework_state.json",mime="application/json",use_container_width=True)st.file_uploader("📂 Reload Problem State File", type=["json"], key="uploaded_file_key", on_change=handle_uploaded_backup)=====================================================================6. WORKFLOW PAGE ROUTING=====================================================================if app_mode == "1. 🤖 AI Intake Coach":st.title("🤖 Step 1: Context Intake Coach")st.markdown("Outline your current decision parameters. State your context objectives, geographic location, and current constraints.")if not api_key:st.info("💡 Note: Define your GEMINI_API_KEY environment variable to activate dynamic AI extraction parsing models.")for msg in st.session_state.ai_chat_history:with st.chat_message(msg["role"]):st.markdown(msg["content"])if user_text := st.chat_input("Enter detailed scenario parameters here..."):st.session_state.ai_chat_history.append({"role": "user", "content": user_text})st.rerun()if len(st.session_state.ai_chat_history) > 0 and st.session_state.ai_chat_history[-1]["role"] == "user" and api_key:with st.chat_message("assistant"):with st.spinner("Computing regional structural vectors..."):reply = trigger_elite_gemini_call(st.session_state.ai_chat_history[-1]["content"])st.session_state.ai_chat_history.append({"role": "assistant", "content": reply})run_meta_extraction()st.rerun()elif app_mode == "2. 🎯 Boundary Mapping":st.title("🎯 Step 2: Contextual Frame Boundaries")st.markdown('⚠️ Advisory Notice: The boundary mappings below were initially configured via AI-extracted logs based on your problem profile. They are fully customizable—feel free to refine them to match exact operating conditions.', unsafe_allow_html=True)f = st.session_state.framing_datast.session_state.framing_data['problem_statement'] = st.text_area("Isolated Problem Statement Focus", value=f.get('problem_statement', ''), height=100)st.session_state.framing_data['in_scope'] = st.text_area("In-Scope Operational Evaluation Boundaries", value=f.get('in_scope', ''), height=100)st.session_state.framing_data['out_scope'] = st.text_area("Explicit Out-Of-Scope Exclusions", value=f.get('out_scope', ''), height=100)st.session_state.framing_data['constraints'] = st.text_area("Regulatory, Physical, or Capital Constraints", value=f.get('constraints', ''), height=100)elif app_mode == "3. 🎨 Strategic Paths":st.title("🎨 Step 3: Creative Strategic Alternative Pathways")st.markdown('⚠️ Advisory Notice: These discrete pathway formulations represent baseline archetypes parsed from initial intake context logs. Use the input templates below to adjust names, scopes, and structural combinations.', unsafe_allow_html=True)st.markdown("Review or modify the three divergent pathways under evaluation:")col1, col2, col3 = st.columns(3)with col1:st.session_state.alternatives_data['alt1_name'] = st.text_input("Alternative 1 Label", value=st.session_state.alternatives_data.get('alt1_name', 'Alternative 1'))st.session_state.alternatives_data['alt1_desc'] = st.text_area("Alternative 1 Description", value=st.session_state.alternatives_data.get('alt1_desc', ''), height=150)with col2:st.session_state.alternatives_data['alt2_name'] = st.text_input("Alternative 2 Label", value=st.session_state.alternatives_data.get('alt2_name', 'Alternative 2'))st.session_state.alternatives_data['alt2_desc'] = st.text_area("Alternative 2 Description", value=st.session_state.alternatives_data.get('alt2_desc', ''), height=150)with col3:st.session_state.alternatives_data['alt3_name'] = st.text_input("Alternative 3 Label", value=st.session_state.alternatives_data.get('alt3_name', 'Alternative 3'))st.session_state.alternatives_data['alt3_desc'] = st.text_area("Alternative 3 Description", value=st.session_state.alternatives_data.get('alt3_desc', ''), height=150)elif app_mode == "4. 📊 Financial Evaluation Sandbox":st.title("📊 Step 4: Quantitative Scenario Modeling Sandbox")st.markdown('⚠️ Advisory Notice: The numerical ranges and performance indexes here are derived from baseline domain profiles and are dynamically editable via sliders and number parameters.', unsafe_allow_html=True)metric_label = st.session_state.info_data.get('metric_name', 'Primary Evaluation Metric')st.info(f"ℹ️ Dynamic Parameter Notice: Parameters are initialized based on metadata framework context: {metric_label}")if not st.session_state.form_schema:st.warning("No interactive parameter schema found. Use Step 1 to inject configuration via AI or upload a valid save file.")else:st.markdown("### Adjust Framework Model Controls")for item in st.session_state.form_schema:key = item["key"]label = item["label"]step = item.get("step", 1.0)v_min = item.get("min", 0.0)v_max = item.get("max", 10000.0)v_def = st.session_state.guided_inputs.get(key, item.get("default", 50.0))v_def = max(float(v_min), min(float(v_max), float(v_def)))if item.get("type") == "slider":st.session_state.guided_inputs[key] = st.slider(label, min_value=float(v_min), max_value=float(v_max), value=float(v_def), step=float(step))else:st.session_state.guided_inputs[key] = st.number_input(label, min_value=float(v_min), max_value=float(v_max), value=float(v_def), step=float(step))st.markdown("---")st.markdown(f"### Modeling Output: {metric_label}")p90, p50, p10 = calculate_statistical_ranges(st.session_state.guided_inputs, st.session_state.form_schema, st.session_state.decision_domain, metric_label)c1, c2, c3 = st.columns(3)c1.metric("Optimistic Variance Profile (P10)", f"{p10:,.2f}")c2.metric("Median Strategic Baseline (P50)", f"{p50:,.2f}")c3.metric("Conservative Stress Scenario (P90)", f"{p90:,.2f}")st.markdown("### Pathway Performance Estimates")for i in range(1, 4):alt_name = st.session_state.alternatives_data.get(f'alt{i}_name', f"Alternative {i}")st.markdown(f"{alt_name}")score_key = f"alt{i}_cost_perf"cur_val = st.session_state.reasoning_data.get(score_key, 5)st.session_state.reasoning_data[score_key] = st.slider(f"Performance score for {alt_name} (1=Highest Cost/Worst, 10=Most Cost Effective/Best)", min_value=1, max_value=10, value=int(cur_val), key=f"eval_cost_p{i}")elif app_mode == "5. 🌿 Qualitative Human Scorecard":st.title("🌿 Step 5: Qualitative Human Scorecard")st.markdown('⚠️ Advisory Notice: Strategic human scorecard metrics were automatically customized via the intake metadata pipeline. Tweak these indexes below to change qualitative multi-criteria weight distributions.', unsafe_allow_html=True)st.markdown("Evaluate non-financial human factors and operational risks across your dynamic strategic paths.")if not st.session_state.human_schema:st.warning("No dynamic qualitative factors discovered. Run the AI Context Coach to populate criteria.")else:for item in st.session_state.human_schema:h_key = item["key"]h_label = item["label"]h_desc = item.get("desc", "")st.markdown(f"### 🛡️ {h_label}")if h_desc:st.caption(h_desc)col1, col2, col3 = st.columns(3)for idx, col in enumerate([col1, col2, col3], 1):alt_name = st.session_state.alternatives_data.get(f'alt{idx}name', f"Alternative {idx}")with col:score_key = f"alt{idx}{h_key}"cur_val = st.session_state.reasoning_data.get(score_key, 5)st.session_state.reasoning_data[score_key] = st.slider(f"{alt_name}", min_value=1, max_value=10, value=int(cur_val), key=f"h_slide_{h_key}_{idx}")st.markdown("---")elif app_mode == "📊 Executive DQ Dashboard":st.title("📊 Executive Decision Quality Dashboard")st.markdown("### 🎛️ Value Trade-off Weight Balancing")w_col1, w_col2 = st.columns(2)with w_col1:st.session_state.values_data['cost_weight'] = st.slider("Quantitative/Cost Framework Weight (%)", 0, 100, int(st.session_state.values_data.get('cost_weight', 50)))with w_col2:st.session_state.values_data['human_weight'] = st.slider("Qualitative/Human Strategy Alignment Weight (%)", 0, 100, int(st.session_state.values_data.get('human_weight', 50)))st.markdown("---")st.markdown("### 🏆 Consolidated Dynamic Strategy Matrix Ranking")alt_scores = []preferred_alt = Nonemax_score = -1.0for i in range(1, 4):name = st.session_state.alternatives_data.get(f'alt{i}_name', f"Alternative {i}")cost_perf = st.session_state.reasoning_data.get(f'alt{i}_cost_perf', 5)speed_perf = st.session_state.reasoning_data.get(f'alt{i}_speed_perf', 5)risk_perf = st.session_state.reasoning_data.get(f'alt{i}risk_perf', 5)financial_composite = (cost_perf + speed_perf + risk_perf) / 3.0qual_vals = []for h_item in st.session_state.human_schema:h_key = h_item["key"]qual_vals.append(st.session_state.reasoning_data.get(f'alt{i}{h_key}', 5))qual_composite = sum(qual_vals) / len(qual_vals) if qual_vals else 5.0w_cost = st.session_state.values_data['cost_weight'] / 100.0w_human = st.session_state.values_data['human_weight'] / 100.0total_w = w_cost + w_humanif total_w > 0:final_score = ((financial_composite * w_cost) + (qual_composite * w_human)) / total_welse:final_score = (financial_composite + qual_composite) / 2.0if final_score > max_score:max_score = final_scorepreferred_alt = namealt_scores.append({"Alternative Pathway": name,"Quantitative Performance (1-10)": round(financial_composite, 2),"Qualitative Human Score (1-10)": round(qual_composite, 2),"Total Weighted Score": round(final_score, 2)})df_scores = pd.DataFrame(alt_scores)st.dataframe(df_scores, use_container_width=True, hide_index=True)# Graphs Section (Side-by-Side)g_col1, g_col2 = st.columns(2)with g_col1:fig = px.bar(df_scores,x="Alternative Pathway",y="Total Weighted Score",title="Comprehensive Weighted Evaluation Index Comparisons",color="Total Weighted Score",color_continuous_scale="Blugrn")st.plotly_chart(fig, use_container_width=True)with g_col2:fig_cross = px.scatter(df_scores,x="Quantitative Performance (1-10)",y="Qualitative Human Score (1-10)",text="Alternative Pathway",title="Strategic Trade-off Cross-Plot",size=[15, 15, 15],color="Total Weighted Score",color_continuous_scale="Viridis",labels={"Quantitative Performance (1-10)": "Quantitative Performance ➔","Qualitative Human Score (1-10)": "Qualitative Score ➔"})fig_cross.update_traces(textposition='top center')fig_cross.update_layout(xaxis=dict(range=[0, 11]), yaxis=dict(range=[0, 11]))st.plotly_chart(fig_cross, use_container_width=True)st.markdown("---")# Preferred Decision Summary Section (FULLY AUTOMATED DYNAMIC LABELS)st.subheader("🏁 Automated Strategic Directives Summary")problem_focus = st.session_state.framing_data.get('problem_statement', 'Review active framework boundaries.')domain_space = st.session_state.decision_domainmetric_tracked = st.session_state.info_data.get('metric_name', 'Primary Outcome Variable')st.markdown(f"""Based on the current weight constraints and matrix configuration within the {domain_space} space, the preferred pathway choice is {preferred_alt} with a composite evaluation value index score of {max_score:.2f} / 10.0.* Active Problem Context: {problem_focus}* Execution Roadmap Strategy: Balance core operational variances by continuously assessing outcomes against the primary model tracking metrics: {metric_tracked}.* Strategic Dynamic Actions: Refine interactive variables inside your sandbox layout parameters to verify stability profile configurations continuously.""")# Standard Professional Disclaimer Footnotest.markdown('Framework Legal Notice Disclaimer: This matrix tool delivers analytical models generated via user parameters and automated heuristics. These indicators do not constitute formal architectural binding engineering layouts or legal investment consulting mandates. AI-generated metrics are subject to optimization variances; verify raw parameters with accredited domain experts prior to committing long-term capital risk.', unsafe_allow_html=True)st.markdown("---")st.markdown("### 🕸️ Decision Quality Assurance Chain Maturity")dq_categories = list(st.session_state.dq_scores.keys())dq_vals = list(st.session_state.dq_scores.values())radar_categories = dq_categories + [dq_categories[0]]radar_vals = dq_vals + [dq_vals[0]]fig_radar = go.Figure()fig_radar.add_trace(go.Scatterpolar(r=radar_vals,theta=radar_categories,fill='toself',name='Maturity Index Score %',line_color='#2563EB'))fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])),showlegend=True,title="Society for Decision Professionals (SDP) 6 Chain Links Quality Status")r_col1, r_col2 = st.columns([2, 1])with r_col1:st.plotly_chart(fig_radar, use_container_width=True)with r_col2:st.markdown("#### Audit Adjustments")for cat in dq_categories:st.session_state.dq_scores[cat] = st.slider(f"{cat} (%)", 0, 100, int(st.session_state.dq_scores[cat]))
