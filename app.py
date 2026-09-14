@@ -68,54 +68,47 @@ elif authentication_status:
 
     # 2. Session State Initialization
     if 'decision_metadata' not in st.session_state:
-        st.session_state.decision_metadata = {'name': "Strategic Career & Financial Pivot", 'owner': "", 'description': ""}
+        st.session_state.decision_metadata = {'name': "", 'owner': "", 'description': ""}
 
     if 'dq_scores' not in st.session_state:
         st.session_state.dq_scores = {
-            'Appropriate Frame': 85, 'Creative Alternatives': 80, 'Reliable Information': 90,
-            'Clear Values & Trade-offs': 85, 'Logically Sound Reasoning': 88, 'Commitment to Action': 75
+            'Appropriate Frame': 10, 'Creative Alternatives': 20, 'Reliable Information': 30,
+            'Clear Values & Trade-offs': 40, 'Logically Sound Reasoning': 30, 'Commitment to Action': 35
         }
 
     if 'framing_data' not in st.session_state:
         st.session_state.framing_data = {
-            'problem_statement': "Evaluating the financial affordability and long-term viability of transitioning from a 5-day week (€95,000 gross) to a 4-day week (0.8 FTE).", 
-            'in_scope': "Net pay tax buffering analysis, pre-2013 public sector pension service accrual, parental leave utilization, shorter working year scheme, monthly cash flow surplus impact.", 
-            'out_scope': "Private sector career changes, moving to alternative employment, drastic lifestyle adjustments.", 
-            'constraints': "€95,000 annual gross salary, joint tax assessment, pre-2013 pension scheme, 13 weeks remaining parental leave for child under 12, €500 baseline monthly surplus."
+            'problem_statement': "", 'in_scope': "", 'out_scope': "", 'constraints': ""
         }
 
     if 'alternatives_data' not in st.session_state:
         st.session_state.alternatives_data = {
-            'alt1_name': "Phased Statutory Parental Leave Trial", 'alt1_desc': "Take 1 day per week of unpaid parental leave using the remaining 13 weeks over ~65 working weeks to test affordability with maximum reversibility and protected pension calculation.",
-            'alt2_name': "Formal 0.8 FTE Contract", 'alt2_desc': "Permanently transition to a 4-day working week via standard public sector part-time work procedures.",
-            'alt3_name': "Shorter Working Year Scheme (SWYS)", 'alt3_desc': "Take unpaid leave in blocks of 2 to 13 weeks annually, pro-rating the net salary drop across all 52 weeks."
+            'alt1_name': "", 'alt1_desc': "",
+            'alt2_name': "", 'alt2_desc': "",
+            'alt3_name': "", 'alt3_desc': ""
         }
 
     if 'adaptive_inputs' not in st.session_state:
-        st.session_state.adaptive_inputs = [
-            {"key": "monthly_surplus", "label": "Baseline Asset Pool / Available Surplus (€)", "default": 500.0, "min_val": 0.0, "max_val": 5000.0, "step": 50.0},
-            {"key": "work_savings", "label": "Estimated Positive Variable Offset / Savings (€)", "default": 150.0, "min_val": 0.0, "max_val": 1000.0, "step": 10.0},
-            {"key": "net_drop_baseline", "label": "Primary Expected Cost / Economic Burden (€)", "default": 680.0, "min_val": 0.0, "max_val": 4000.0, "step": 10.0}
-        ]
+        st.session_state.adaptive_inputs = []
 
     if 'adaptive_values' not in st.session_state:
-        st.session_state.adaptive_values = {"monthly_surplus": 500.0, "work_savings": 150.0, "net_drop_baseline": 680.0}
+        st.session_state.adaptive_values = {}
 
     if 'decision_formulas' not in st.session_state:
         st.session_state.decision_formulas = {
-            'cost_delta_formula': "net_drop_baseline - work_savings",
-            'adjusted_surplus_formula': "monthly_surplus + work_savings - net_drop_baseline"
+            'cost_delta_formula': "",
+            'adjusted_surplus_formula': ""
         }
 
     if 'evaluation_dimensions' not in st.session_state:
         st.session_state.evaluation_dimensions = {
-            'financial_label': "Financial Sustainability Index",
-            'non_financial_label': "Work-Life Balance & Wellbeing Index"
+            'financial_label': "Financial Score",
+            'non_financial_label': "Strategic Return"
         }
 
     if 'info_data' not in st.session_state:
         st.session_state.info_data = {
-            'metric_name': "Net Monthly Cash Flow Impact (€)", 
+            'metric_name': "Primary Value Impact", 
             'knowledge_gaps': "",
             'custom_formula_rule': ""
         }
@@ -124,11 +117,7 @@ elif authentication_status:
         st.session_state.values_data = {'cost_weight': 50, 'human_weight': 50, 'value_tradeoff_notes': ""}
 
     if 'reasoning_data' not in st.session_state:
-        st.session_state.reasoning_data = {
-            'alt1_cost_perf': 7, 'alt1_risk_perf': 9,
-            'alt2_cost_perf': 6, 'alt2_risk_perf': 5,
-            'alt3_cost_perf': 7, 'alt3_risk_perf': 7
-        }
+        st.session_state.reasoning_data = {}
 
     if 'ai_chat_history' not in st.session_state:
         st.session_state.ai_chat_history = [
@@ -164,9 +153,7 @@ elif authentication_status:
         chat_log = ""
         for msg in st.session_state.ai_chat_history:
             if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
-                chat_log += f"{msg['role'].upper()}: {str(msg['content'])}
-
-"
+                chat_log += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
             
         extraction_prompt = """
         Analyze the decision framework interview history below. Extract values to populate this dynamic schema structure.
@@ -246,9 +233,7 @@ elif authentication_status:
         for msg in st.session_state.ai_chat_history[-8:]:
             if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
                 if msg['content'] == prompt_text and msg['role'] == 'user': continue
-                conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}
-
-"
+                conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
         system_instruction = """You are an elite decision coach.
     Your strict objective is helping the user systematically complete framing boundaries across any arbitrary domain.
     Keep responses highly concise (under 2 paragraphs).
@@ -467,7 +452,7 @@ elif authentication_status:
             st.metric("Adjusted Residual Boundary Reserve Pool Balance", f"€{adjusted_surplus:,.2f}",
             delta="Sufficient Strategic Surplus Margin" if adjusted_surplus >= 0 else "Negative Residual Margin Alert",
             delta_color="normal" if adjusted_surplus >= 0 else "inverse")
-            
+        
         # TRANSPARENT AUDIT LEDGER TRAIL PANEL
         with st.expander("🔎 View Live Deterministic Equation Trace", expanded=False):
             st.markdown(f"Calculated Score Target Formula: {formulas.get('cost_delta_formula')}")
