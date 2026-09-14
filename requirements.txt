@@ -1,2 +1,3 @@
 plotly 
 google-genai 
+streamlit-authenticator 
