@@ -6,11 +6,12 @@ import os
 import json
 import streamlit_authenticator as stauth
 from google import genai
+import copy
 
 # 1. Authentication System Integration
-# Convert the read-only Streamlit secrets to mutable dict structures to avoid TypeError item assignment exceptions
-credentials_dict = dict(st.secrets['credentials']) if 'credentials' in st.secrets else {}
-cookie_dict = dict(st.secrets['cookie']) if 'cookie' in st.secrets else {}
+# Deeply convert read-only Streamlit secrets to mutable dict structures to allow streamlit-authenticator to track login metrics
+credentials_dict = copy.deepcopy(dict(st.secrets['credentials'])) if 'credentials' in st.secrets else {}
+cookie_dict = copy.deepcopy(dict(st.secrets['cookie'])) if 'cookie' in st.secrets else {}
 
 authenticator = stauth.Authenticate(
     credentials_dict,
@@ -157,7 +158,9 @@ elif authentication_status:
         chat_log = ""
         for msg in st.session_state.ai_chat_history:
             if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
-                chat_log += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
+                chat_log += f"{msg['role'].upper()}: {str(msg['content'])}
+
+"
             
         extraction_prompt = """
         Analyze the decision framework interview history below. Extract values to populate this dynamic schema structure.
@@ -237,7 +240,9 @@ elif authentication_status:
         for msg in st.session_state.ai_chat_history[-8:]:
             if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
                 if msg['content'] == prompt_text and msg['role'] == 'user': continue
-                conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}\n\n"
+                conversation_context += f"{msg['role'].upper()}: {str(msg['content'])}
+
+"
         system_instruction = """You are an elite decision coach.
     Your strict objective is helping the user systematically complete framing boundaries across any arbitrary domain.
     Keep responses highly concise (under 2 paragraphs).
