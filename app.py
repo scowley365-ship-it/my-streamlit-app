@@ -4,21 +4,24 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import json
-import copy
 import streamlit_authenticator as stauth
 from google import genai
 
 # 1. Authentication System Integration
-# Fetch credentials securely from Streamlit secrets management structures
+# Convert the read-only Streamlit secrets to mutable dict structures to avoid TypeError item assignment exceptions
+credentials_dict = dict(st.secrets['credentials']) if 'credentials' in st.secrets else {}
+cookie_dict = dict(st.secrets['cookie']) if 'cookie' in st.secrets else {}
+
 authenticator = stauth.Authenticate(
-    st.secrets['credentials'],
-    st.secrets['cookie']['name'],
-    st.secrets['cookie']['key'],
-    st.secrets['cookie']['expiry_days']
+    credentials_dict,
+    cookie_dict.get('name', 'cookie_name'),
+    cookie_dict.get('key', 'cookie_key'),
+    int(cookie_dict.get('expiry_days', 30))
 )
 
-# Render the authentication panel interface
-login_result = authenticator.login()
+# Render the authentication panel interface safely using keyword parameters
+# (Streamlit-authenticator >= 0.3.x handles status updates directly inside st.session_state)
+authenticator.login(location='main')
 
 # Retrieve user validation variables out of state parameters
 authentication_status = st.session_state.get("authentication_status")
@@ -274,7 +277,7 @@ elif authentication_status:
     with st.sidebar:
         st.title("🏛️ Decision Coach Engine")
         st.markdown(f"**Welcome, {username}!**")
-        authenticator.logout("Logout", "sidebar")
+        authenticator.logout(button_name="Logout", location="sidebar")
         st.markdown("---")
         app_mode = st.radio("Workflow Steps", ["1. 🤖 AI Framing & Discovery Coach","2. 🎯 Document Frame Boundaries","3. 🎨 Define Strategy Alternatives","4. 📊 Model Information Ranges & Benchmarks","5. ⚖️ Calibrate Values & Rate Analysis","6. 📊 Executive Dashboard"])
         st.markdown("---")
@@ -386,19 +389,22 @@ elif authentication_status:
         formulas = st.session_state.decision_formulas
         st.code(f"Primary Cost Delta Target String:  {formulas.get('cost_delta_formula', 'None')}\nResidual Balance Target String:    {formulas.get('adjusted_surplus_formula', 'None')}", language="python")
         st.markdown("### 🛠️ Domain Adaptive Variables")
-        columns_list = st.columns(min(3, len(st.session_state.adaptive_inputs)))
-        for idx, item in enumerate(st.session_state.adaptive_inputs):
-            col_target = columns_list[idx % len(columns_list)]
-            v_key = item["key"]
-            v_label = item["label"]
-            v_def = float(st.session_state.adaptive_values.get(v_key, item.get("default", 0.0)))
-            v_min = float(item.get("min_val", 0.0))
-            v_max = float(item.get("max_val", 1000000000.0))
-            v_step = float(item.get("step", 1.0))
-            if v_def < v_min: v_def = v_min
-            if v_def > v_max: v_def = v_max
-            with col_target:
-                st.session_state.adaptive_values[v_key] = st.number_input(label=v_label, min_value=v_min, max_value=v_max, value=v_def, step=v_step, key=f"dyn_input_{v_key}")
+        if len(st.session_state.adaptive_inputs) > 0:
+            columns_list = st.columns(min(3, len(st.session_state.adaptive_inputs)))
+            for idx, item in enumerate(st.session_state.adaptive_inputs):
+                col_target = columns_list[idx % len(columns_list)]
+                v_key = item["key"]
+                v_label = item["label"]
+                v_def = float(st.session_state.adaptive_values.get(v_key, item.get("default", 0.0)))
+                v_min = float(item.get("min_val", 0.0))
+                v_max = float(item.get("max_val", 1000000000.0))
+                v_step = float(item.get("step", 1.0))
+                if v_def < v_min: v_def = v_min
+                if v_def > v_max: v_def = v_max
+                with col_target:
+                    st.session_state.adaptive_values[v_key] = st.number_input(label=v_label, min_value=v_min, max_value=v_max, value=v_def, step=v_step, key=f"dyn_input_{v_key}")
+        else:
+            st.info("No domain adaptive variables extracted yet. Converse with the AI coach to generate variables dynamically.")
 
     # SECTION 5: VALUE CALIBRATION & LABELING
     elif app_mode == "5. ⚖️ Calibrate Values & Rate Analysis":
